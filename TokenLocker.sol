@@ -35,14 +35,15 @@ contract TokenLocker is ReentrancyGuard {
     _;
     }
     modifier onlyWhitelistedToken(address token) {
-    require(isTokenWhitelisted[token], "This token is not whitelisted.");
+    require(whitelistedTokens[token], "TokenLocker: Token not whitelisted");
     _;
     }
     Lock[] private _locks;
     mapping(address => uint256[]) private _userLockIds;
     mapping(address => bool) private _whitelistedTokens;
     mapping(address => bool) private _whitelistedLPs;
-
+    mapping(address => bool) public whitelistedTokens;
+    
     event LockAdded(uint256 indexed id, address token, address owner, uint256 amount, uint256 unlockDate);
     event LockRemoved(uint256 indexed id, address token, address owner, uint256 amount, uint256 unlockedAt);
     event LockUpdated(uint256 indexed id, address token, address owner, uint256 newAmount, uint256 newUnlockDate);
@@ -70,7 +71,7 @@ function addWhitelistedToken(address token) external onlyOwner {
 */
 function removeWhitelistedToken(address token) external onlyOwner {
     require(whitelistedTokens[token], "TokenLocker: Token is not whitelisted.");
-    
+    whitelistedTokens[token] = false;
     delete whitelistedTokens[token];
     emit WhitelistedTokenRemoved(token);
 }
