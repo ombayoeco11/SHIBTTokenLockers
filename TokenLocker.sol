@@ -2,90 +2,76 @@
 
 pragma solidity ^0.8.0;
 
-import "./IERC20.sol";
-import "./SafeERC20.sol";
-import "./SafeMath.sol";
-import "./Ownable.sol";
-import "./ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/Context.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract TokenLocker is Ownable, ReentrancyGuard {
-    using SafeMath for uint256;
-    using SafeERC20 for IERC20;
+contract TokenLocker is Context {
+    using EnumerableSet for EnumerableSet.UintSet;
 
     struct TokenLock {
-        uint256 lockId;
-        address tokenAddress;
+        address owner;
+        address token;
         uint256 amount;
         uint256 unlockTime;
-        bool released;
     }
 
-    mapping(address => TokenLock[]) private _userLocks;
-    mapping(address => mapping(address => uint256[])) private _tokenLocks;
-    uint256 private _lockIdCounter;
+    event TokensLocked(address indexed owner, address indexed token, uint256 amount, uint256 unlockTime);
+    event TokensWithdrawn(address indexed owner, address indexed token, uint256 amount);
 
-    event TokensLocked(uint256 lockId, address indexed tokenAddress, address indexed locker, uint256 amount, uint256 unlockTime);
-    event TokensReleased(uint256 lockId, address indexed tokenAddress, address indexed locker, uint256 amount);
+    uint256 public nextLockId;
+    mapping (uint256 => TokenLock) public tokenLocks;
+    mapping (address => EnumerableSet.UintSet) private userLocks;
 
-    function lockTokens(address tokenAddress, uint256 amount, uint256 unlockTime) external nonReentrant {
-        require(amount > 0, "TokenLocker: amount should be greater than 0");
-        require(unlockTime > block.timestamp, "TokenLocker: unlockTime should be in the future");
-        require(IERC20(tokenAddress).balanceOf(msg.sender) >= amount, "TokenLocker: insufficient balance");
+    function lockTokens(address _token, uint256 _amount, uint256 _unlockTime) external returns (uint256 lockId) {
+        require(_unlockTime > block.timestamp, "TokenLocker: unlock time must be in the future");
+        require(_amount > 0, "TokenLocker: amount must be greater than 0");
 
-        IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), amount);
+        lockId = nextLockId;
+        nextLockId++;
 
-        uint256 lockId = _getNextLockId();
-        TokenLock memory lock = TokenLock({
-            lockId: lockId,
-            tokenAddress: tokenAddress,
-            amount: amount,
-            unlockTime: unlockTime,
-            released: false
-        });
+        TokenLock storage tokenLock = tokenLocks[lockId];
+        tokenLock.owner = _msgSender();
+        tokenLock.token = _token;
+        tokenLock.amount = _amount;
+        tokenLock.unlockTime = _unlockTime;
 
-        _userLocks[msg.sender].push(lock);
-        _tokenLocks[tokenAddress][msg.sender].push(lockId);
+        userLocks[_msgSender()].add(lockId);
 
-        emit TokensLocked(lockId, tokenAddress, msg.sender, amount, unlockTime);
+        IERC20(_token).transferFrom(_msgSender(), address(this), _amount);
+
+        emit TokensLocked(_msgSender(), _token, _amount, _unlockTime);
     }
 
-    function releaseTokens(uint256 lockId) external nonReentrant {
-        TokenLock storage lock = _getLock(lockId);
+    function withdrawTokens(uint256 _lockId) external {
+        TokenLock storage tokenLock = tokenLocks[_lockId];
+        require(tokenLock.owner == _msgSender(), "TokenLocker: sender is not the lock owner");
+        require(tokenLock.unlockTime <= block.timestamp, "TokenLocker: tokens are still locked");
 
-        require(lock.unlockTime <= block.timestamp, "TokenLocker: tokens are still locked");
-        require(!lock.released, "TokenLocker: tokens already released");
+        userLocks[_msgSender()].remove(_lockId);
 
-        lock.released = true;
+        uint256 amount = tokenLock.amount;
+        tokenLock.amount = 0;
 
-        IERC20(lock.tokenAddress).safeTransfer(msg.sender, lock.amount);
+        IERC20(tokenLock.token).transfer(tokenLock.owner, amount);
 
-        emit TokensReleased(lockId, lock.tokenAddress, msg.sender, lock.amount);
+        emit TokensWithdrawn(tokenLock.owner, tokenLock.token, amount);
     }
 
-    function getLocksByUser(address user) external view returns (TokenLock[] memory) {
-        return _userLocks[user];
-    }
+    function getUserLockIds(address _user) external view returns (uint256[] memory lockIds) {
+        uint256 userLockCount = userLocks[_user].length();
+        lockIds = new uint256[](userLockCount);
 
-    function getLockIdsByToken(address tokenAddress, address user) external view returns (uint256[] memory) {
-        return _tokenLocks[tokenAddress][user];
-    }
-
-    function getLockById(uint256 lockId) external view returns (TokenLock memory) {
-        return _getLock(lockId);
-    }
-
-    function _getNextLockId() private returns (uint256) {
-        _lockIdCounter++;
-        return _lockIdCounter;
-    }
-
-    function _getLock(uint256 lockId) private view returns (TokenLock storage) {
-        uint256 locksLength = _userLocks[msg.sender].length;
-        for (uint256 i = 0; i < locksLength; i++) {
-            if (_userLocks[msg.sender][i].lockId == lockId) {
-                return _userLocks[msg.sender][i];
-            }
+        for (uint256 i = 0; i < userLockCount; i++) {
+            lockIds[i] = userLocks[_user].at(i);
         }
-        revert("TokenLocker: lock not found");
+    }
+
+    function getLock(uint256 _lockId) external view returns (TokenLock memory tokenLock) {
+        return tokenLocks[_lockId];
+    }
+
+    function getLockIdsLength() external view returns (uint256) {
+        return nextLockId;
     }
 }
