@@ -6,17 +6,17 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
 
 contract TokenLocker is Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     
+    // Define _lockIdCounter as a state variable
+    uint256 private _lockIdCounter;
     
-    constructor() {
-    owner = msg.sender;
-    }
 
     // Lock structure
-    struct Lock {
+    struct TokenLock {
         uint256 id;
         address token;
         address owner;
@@ -27,10 +27,12 @@ contract TokenLocker is Ownable, Pausable, ReentrancyGuard {
         uint256 vestingDuration;
         uint256 vestingCliff;
     }
-
-    // Lock ID padding, as there is a lack of a pausing mechanism
-    // as of now the lastest id from v1 is about 22K, so this is probably a safe padding value.
-    uint256 private constant ID_PADDING = 1_000_000;
+    
+    TokenLock[] private _locks;
+    mapping(address => uint256[]) private _userLockIds;
+    mapping(address => bool) private _whitelistedTokens;
+    mapping(address => bool) private _whitelistedLPs;
+    mapping(address => bool) public whitelistedTokens;
     address public owner;
 
     modifier onlyOwner {
@@ -41,12 +43,17 @@ contract TokenLocker is Ownable, Pausable, ReentrancyGuard {
     require(whitelistedTokens[token], "TokenLocker: Token not whitelisted");
     _;
     }
-    Lock[] private _locks;
-    mapping(address => uint256[]) private _userLockIds;
-    mapping(address => bool) private _whitelistedTokens;
-    mapping(address => bool) private _whitelistedLPs;
-    mapping(address => bool) public whitelistedTokens;
+    modifier onlyWhitelistedLP(address lp) {
+    require(_whitelistedLPs[lp], "TokenLocker: LP token not whitelisted");
+    _;
+}
+function _getNextLockId() internal returns (uint256) {
+    return _lockIdCounter.current();
+}
     
+    constructor() {
+    owner = msg.sender;
+    }
     event LockAdded(uint256 indexed id, address token, address owner, uint256 amount, uint256 unlockDate);
     event LockRemoved(uint256 indexed id, address token, address owner, uint256 amount, uint256 unlockedAt);
     event LockUpdated(uint256 indexed id, address token, address owner, uint256 newAmount, uint256 newUnlockDate);
@@ -54,6 +61,9 @@ contract TokenLocker is Ownable, Pausable, ReentrancyGuard {
     event WhitelistedTokenRemoved(address indexed token);
     event WhitelistedLPAdded(address indexed lp);
     event WhitelistedLPRemoved(address indexed lp);
+
+
+
 
     /**
 * @dev Adds a token to the whitelist.
@@ -85,9 +95,9 @@ function removeWhitelistedToken(address token) external onlyOwner {
 */
 function addWhitelistedLP(address lp) external onlyOwner {
     require(lp != address(0), "TokenLocker: LP address cannot be zero.");
-    require(!whitelistedLPs[lp], "TokenLocker: LP token is already whitelisted.");
+    require(!_whitelistedLPs[lp], "TokenLocker: LP token is already whitelisted.");
     
-    whitelistedLPs[lp] = true;
+    _whitelistedLPs[lp] = true;
     emit WhitelistedLPAdded(lp);
 }
     /**
@@ -96,10 +106,10 @@ function addWhitelistedLP(address lp) external onlyOwner {
 * @param lp Address of the LP token to be removed.
 */
 function removeWhitelistedLP(address lp) external onlyOwner {
-    require(whitelistedLPs[lp], "TokenLocker: LP token is not whitelisted.");
+    require(_whitelistedLPs[lp], "TokenLocker: LP token is not whitelisted.");
     
-    delete whitelistedLPs[lp];
-    emit WhitelistedLPRemove(lp);
+    delete _whitelistedLPs[lp];
+    emit WhitelistedLPRemoved(lp);
 }
     function lockTokens(address token, uint256 amount, uint256 unlockDate) external onlyWhitelistedToken(token) whenNotPaused nonReentrant returns (uint256) {
     require(amount > 0, "TokenLocker: cannot lock 0 amount");
@@ -109,7 +119,7 @@ function removeWhitelistedLP(address lp) external onlyOwner {
     uint256 lockAmount = IERC20(token).balanceOf(address(this));
     IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
-    _locks[lockId] = Lock({
+    _locks[lockId] = TokenLock({
         id: lockId,
         token: token,
         owner: msg.sender,
@@ -121,7 +131,7 @@ function removeWhitelistedLP(address lp) external onlyOwner {
         lastClaimedAt: 0
     });
 
-    _userLocks[msg.sender].push(lockId);
+    _userLockIds[msg.sender].push(lockId);
     _tokenLocks[token].push(lockId);
     emit LockAdded(lockId, token, msg.sender, amount, unlockDate);
 
@@ -149,7 +159,7 @@ function lockLP(address lp, uint256 amount, uint256 unlockDate) external onlyWhi
         lastClaimedAt: 0
     });
 
-    _userLocks[msg.sender].push(lockId);
+    _userLockIds[msg.sender].push(lockId);
     _tokenLocks[lp].push(lockId);
     emit LockAdded(lockId, lp, msg.sender, amount, unlockDate);
 
@@ -292,7 +302,7 @@ function lockLPWithVesting(address lp, uint256 amount, uint256 unlockDate, uint2
         return userLocks;
     }
 
-    function getLock(uint256 lockId) external view returns (Lock memory) {
+    function getLock(uint256 lockId) external view returns (TokenLock memory) {
         require(_locks[lockId].id != 0, "TokenLockers: lock does not exist");
         return _locks[lockId];
     }
