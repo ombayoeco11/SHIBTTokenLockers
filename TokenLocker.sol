@@ -6,6 +6,11 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 contract TokenLocker is ReentrancyGuard {
     using SafeERC20 for IERC20;
+    
+    
+    constructor() {
+    owner = msg.sender;
+    }
 
     // Lock structure
     struct Lock {
@@ -23,7 +28,16 @@ contract TokenLocker is ReentrancyGuard {
     // Lock ID padding, as there is a lack of a pausing mechanism
     // as of now the lastest id from v1 is about 22K, so this is probably a safe padding value.
     uint256 private constant ID_PADDING = 1_000_000;
+    address public owner;
 
+    modifier onlyOwner {
+    require(msg.sender == owner, "Only the contract owner can call this function");
+    _;
+    }
+    modifier onlyWhitelistedToken(address token) {
+    require(isTokenWhitelisted[token], "This token is not whitelisted.");
+    _;
+    }
     Lock[] private _locks;
     mapping(address => uint256[]) private _userLockIds;
     mapping(address => bool) private _whitelistedTokens;
