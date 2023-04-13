@@ -91,74 +91,73 @@ contract TokenLocker is Context, Ownable, Pausable {
 
         emit TokensClaimed(_msgSender(), _locks[id].token, _locks[id].amount, id);
 
-    return true;
-}
-
-function retrieveTokens(address token, uint256 amount, uint256 id) public onlyOwner returns (bool) {
-    require(_locks[id].token == token, "TokenLocker: Token address does not match lock id");
-    require(amount > 0, "TokenLocker: Amount must be greater than 0");
-    require(_locks[id].amount >= amount, "TokenLocker: Amount must be less than or equal to the locked amount");
-
-    IERC20 erc20 = IERC20(token);
-    erc20.transfer(owner(), amount);
-
-    _locks[id].amount -= amount;
-
-    emit TokensRetrieved(owner(), token, amount, id);
-
-    return true;
-}
-
-function retrieveWrongTokens(address token, uint256 amount) public onlyOwner returns (bool) {
-    IERC20 erc20 = IERC20(token);
-    erc20.transfer(owner(), amount);
-
-    emit WrongTokensRetrieved(owner(), token, amount);
-
-    return true;
-}
-
-function getUserLocks(address user) external view returns (address[] memory) {
-    uint256 length = _userLocks[user].length();
-    address[] memory userLocks = new address[](length);
-
-    for (uint256 i = 0; i < length; i++) {
-        userLocks[i] = _userLocks[user].at(i);
+        return true;
     }
 
-    return userLocks;
-}
+    function retrieveTokens(address token, uint256 amount, uint256 id) public onlyOwner returns (bool) {
+        require(_locks[id].token == token, "TokenLocker: Token address does not match lock id");
+        require(amount > 0, "TokenLocker: Amount must be greater than 0");
+        require(_locks[id].amount >= amount, "TokenLocker: Amount must be less than or equal to the locked amount");
 
-function getUserTokenLocks(address user, address token) external view returns (uint256[] memory) {
-    uint256 length = _userLocks[user].length();
-    uint256[] memory userTokenLocks = new uint256[](length);
+        IERC20 erc20 = IERC20(token);
+        erc20.transfer(owner(), amount);
 
-    for (uint256 i = 0; i < length; i++) {
-        uint256 lockId = _userLocks[user].at(i);
-        if (_locks[lockId].token == token) {
-            userTokenLocks[i] = uint256(uint160(lockId));
+        _locks[id].amount -= amount;
+
+        emit TokensRetrieved(owner(), token, amount, id);
+
+        return true;
+    }
+
+    function retrieveWrongTokens(address token, uint256 amount) public onlyOwner returns (bool) {
+        IERC20 erc20 = IERC20(token);
+        erc20.transfer(owner(), amount);
+
+        emit WrongTokensRetrieved(owner(), token, amount);
+
+        return true;
+    }
+
+    function getUserLocks(address user) external view returns (address[] memory) {
+        uint256 length = _userLocks[user].length();
+        address[] memory userLocks = new address[](length);
+
+        for (uint256 i = 0; i < length; i++) {
+            userLocks[i] = _userLocks[user].at(i);
         }
+
+        return userLocks;
     }
 
-    return userTokenLocks;
-}
+    function getUserTokenLocks(address user, address token) external view returns (uint256[] memory) {
+        uint256 length = _userLocks[user].length();
+        uint256[] memory userTokenLocks = new uint256[](length);
+
+        for (uint256 i = 0; i < length; i++) {
+            uint256 lockId = uint256(uint160(_userLocks[user].at(i)));
+            if (_locks[lockId].token == token) {
+                userTokenLocks[i] = lockId;
+            }
+        }
+
+        return userTokenLocks;
+    }
+
+    function getTokenLocks(address token) external view returns (uint256[] memory) {
+        return _tokenLocks[token];
+    }
+
+    function getTokenLock(uint256 id) external view returns (TokenLock memory) {
+        return _locks[id];
+    }
 
 
-function getTokenLocks(address token) external view returns (uint256[] memory) {
-    return _tokenLocks[token];
-}
+    function pause() public onlyOwner {
+        _pause();
+    }
 
-function getTokenLock(uint256 id) external view returns (TokenLock memory) {
-    return _locks[id];
-}
-
-
-function pause() public onlyOwner {
-    _pause();
-}
-
-function unpause() public onlyOwner {
-    _unpause();
-}
+    function unpause() public onlyOwner {
+        _unpause();
+    }
 
 }
