@@ -121,16 +121,7 @@ contract TokenLocker is Context, Ownable, Pausable {
         return true;
     }
 
-    function lockLiquidity(uint256 amount, uint256 unlockDate) public {
-    require(amount > 0, "Amount must be greater than 0");
-    require(unlockDate > block.timestamp, "Unlock date must be in the future");
-
-    // Approve the transfer of liquidity tokens to the TokenLocker contract
-    require(IERC20(token).approve(address(this), amount), "Failed to approve transfer");
-
-    // Lock the liquidity tokens
-    lockTokens(amount, unlockDate);
-}
+   
 
     function getUserLocks(address user) external view returns (address[] memory) {
         uint256 length = _userLocks[user].length();
