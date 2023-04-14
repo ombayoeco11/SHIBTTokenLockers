@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
+
 contract TokenLocker is Context, Ownable, Pausable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -20,6 +21,8 @@ contract TokenLocker is Context, Ownable, Pausable {
         bool claimed;
     }
 
+
+    
     event TokensLocked(address indexed owner, address indexed token, uint256 amount, uint256 unlockDate, uint256 id);
     event TokensClaimed(address indexed owner, address indexed token, uint256 amount, uint256 id);
     event LockExtended(address indexed owner, address indexed token, uint256 amount, uint256 unlockDate, uint256 id);
@@ -117,6 +120,17 @@ contract TokenLocker is Context, Ownable, Pausable {
 
         return true;
     }
+
+    function lockLiquidity(uint256 amount, uint256 unlockDate) public {
+    require(amount > 0, "Amount must be greater than 0");
+    require(unlockDate > block.timestamp, "Unlock date must be in the future");
+
+    // Approve the transfer of liquidity tokens to the TokenLocker contract
+    require(IERC20(token).approve(address(this), amount), "Failed to approve transfer");
+
+    // Lock the liquidity tokens
+    lockTokens(amount, unlockDate);
+}
 
     function getUserLocks(address user) external view returns (address[] memory) {
         uint256 length = _userLocks[user].length();
